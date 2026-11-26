@@ -1,0 +1,5 @@
+node_modules/
+data/
+gw.out.log
+gw.err.log
+.hiero/

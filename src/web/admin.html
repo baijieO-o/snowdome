@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snowdome 管理</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; color: #222; background: #fafafa; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    button { padding: 4px 10px; cursor: pointer; }
+    button.danger { color: #b00020; }
+    input { padding: 4px 8px; }
+    #msg { min-height: 1.5em; color: #555; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Snowdome 管理</h1>
+
+  <section id="loginBox">
+    <label>管理员密码 <input id="password" type="password" autocomplete="off"></label>
+    <button id="loginBtn">进入</button>
+  </section>
+
+  <div id="panel" class="hidden">
+    <section>
+      <h2 style="font-size:15px;margin:0 0 8px">居民</h2>
+      <table>
+        <thead><tr><th>名称</th><th>ID</th><th>状态</th><th>小镇</th><th></th></tr></thead>
+        <tbody id="residents"></tbody>
+      </table>
+      <button id="refreshBtn">刷新</button>
+    </section>
+
+    <section>
+      <h2 style="font-size:15px;margin:0 0 8px">事件日志</h2>
+      <p>清空会先把当前日志归档到各小镇数据目录（带时间戳的文件），再清空，并重启小镇进程。</p>
+      <button id="clearBtn" class="danger">归档并清空日志</button>
+    </section>
+  </div>
+
+  <div id="msg"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let session = sessionStorage.getItem('adminSession') || '';
+
+    function say(text) { $('msg').textContent = text; }
+
+    async function api(method, path, body) {
+      const res = await fetch(path, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-admin-session': session },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { showLogin(); throw new Error('登录已失效，请重新输入密码'); }
+      if (!res.ok) throw new Error(data.reason_code || data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function showLogin() {
+      session = '';
+      sessionStorage.removeItem('adminSession');
+      $('loginBox').classList.remove('hidden');
+      $('panel').classList.add('hidden');
+    }
+
+    function showPanel() {
+      $('loginBox').classList.add('hidden');
+      $('panel').classList.remove('hidden');
+    }
+
+    async function loadResidents() {
+      const data = await api('GET', '/api/admin/residents');
+      const tbody = $('residents');
+      tbody.innerHTML = '';
+      for (const r of data.residents) {
+        const tr = document.createElement('tr');
+        const cells = [r.name, r.id, r.status === 'town' ? '在镇上' : '不在镇上', r.town];
+        for (const text of cells) {
+          const td = document.createElement('td');
+          td.textContent = String(text);
+          tr.appendChild(td);
+        }
+        const td = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'danger';
+        btn.textContent = '删除';
+        btn.onclick = () => purge(r);
+        td.appendChild(btn);
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      }
+      const down = data.towns.filter((t) => !t.ok).map((t) => t.port);
+      say(down.length ? `小镇不可用：${down.join(', ')}` : `共 ${data.residents.length} 位居民`);
+    }
+
+    async function purge(r) {
+      if (!confirm(`删除（踢下线）「${r.name}」？会撤销其登录并从小镇移除。`)) return;
+      try {
+        const data = await api('POST', '/api/admin/purge', { actorId: r.id });
+        say(data.purged ? `已删除 ${r.name}` : `未找到 ${r.name}（可能已删除）`);
+        await loadResidents();
+      } catch (e) { say(e.message); }
+    }
+
+    async function clearLog() {
+      if (!confirm('归档并清空所有小镇的事件日志？小镇进程会重启。')) return;
+      try {
+        const data = await api('POST', '/api/admin/clear-log');
+        say('已归档并清空：' + data.towns.map((t) => `${t.port}:${t.archived ?? (t.ok ? '无日志' : '失败')}`).join('，'));
+        setTimeout(() => loadResidents().catch(() => {}), 2000);
+      } catch (e) { say(e.message); }
+    }
+
+    $('loginBtn').onclick = async () => {
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: $('password').value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.reason_code || data.error || `HTTP ${res.status}`);
+        session = data.token;
+        sessionStorage.setItem('adminSession', session);
+        $('password').value = '';
+        showPanel();
+        await loadResidents();
+      } catch (e) { say(e.message); }
+    };
+    $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
+    $('refreshBtn').onclick = () => loadResidents().catch((e) => say(e.message));
+    $('clearBtn').onclick = clearLog;
+
+    if (session) {
+      showPanel();
+      loadResidents().catch(() => showLogin());
+    }
+  </script>
+</body>
+</html>

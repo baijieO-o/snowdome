@@ -1,0 +1,18 @@
+{
+  "name": "snowdome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Snowdome 玻璃球世界：服务端主体与观察页（第一版，不接入任何 Agent）",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "gateway": "node --experimental-strip-types src/gateway/main.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  }
+}

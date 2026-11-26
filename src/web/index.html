@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Snowdome 观察页</title>
+  <style>
+    :root {
+      --bg: #0b1119; --panel: #142033; --panel-2: #1a2a40; --line: #26395a;
+      --text: #e4eefa; --muted: #8aa2bf; --accent: #6fb8ff; --accent-2: #3a7bc8;
+      --gold: #ffd966; --ok: #7fd49a; --warn: #f0b429;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+    #wrap { display: grid; grid-template-columns: 1fr 320px; grid-template-rows: minmax(0, 1fr); height: 100%; }
+    #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(ellipse at center, #17263b 0%, var(--bg) 75%); }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    aside { background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; font-size: 13px; display: flex; flex-direction: column; gap: 12px; }
+    .brand h1 { font-size: 17px; margin: 0; letter-spacing: 1px; }
+    .brand p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+    .card h2 { font-size: 13px; margin: 0 0 8px; color: var(--accent); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+    .card h2 span { color: var(--muted); font-weight: normal; font-size: 12px; }
+    #status { font-size: 13px; padding: 6px 8px; border-radius: 6px; background: #0f1826; color: var(--ok); }
+    #status[data-mode="replay"] { color: var(--warn); }
+    #status[data-mode="error"] { color: #ff8a8a; }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .controls button, #actorButtons button, #skipReplay {
+      background: #223552; color: var(--text); border: 1px solid #304b72; border-radius: 6px;
+      padding: 5px 10px; cursor: pointer; font: inherit; transition: background .15s, border-color .15s;
+    }
+    .controls button:hover, #actorButtons button:hover, #skipReplay:hover { background: #2b4469; border-color: var(--accent-2); }
+    .controls button.active, #actorButtons button.active { background: var(--accent-2); border-color: var(--accent); }
+    .controls .group { display: flex; gap: 6px; }
+    #zoomLabel { color: var(--muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+    #actorButtons { display: flex; flex-direction: column; gap: 6px; }
+    #actorButtons:empty::after { content: "暂无居民"; color: var(--muted); }
+    #skipReplay { margin-top: 8px; width: 100%; }
+    details.help { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    details.help summary { cursor: pointer; color: var(--accent); }
+    details.help kbd { background: #0f1826; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--text); font-family: inherit; }
+    .legend-row { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    #log { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .ev { display: grid; grid-template-columns: 44px 16px 1fr; gap: 6px; align-items: baseline; padding: 4px 6px; border-radius: 5px; background: #0f1826; border-left: 3px solid var(--line); font-size: 12px; line-height: 1.5; word-break: break-all; }
+    .ev .seq { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .ev .who { color: var(--text); }
+    .ev .what { color: var(--muted); }
+    .ev .say { color: #fff3cc; }
+    .ev.speak { border-left-color: var(--gold); }
+    .ev.move { border-left-color: #4fa3e0; }
+    .ev.spawn { border-left-color: var(--ok); }
+    .ev.place { border-left-color: #e8a87c; }
+    .ev.pickup { border-left-color: #c9a7e8; }
+    .ev.leave { border-left-color: #9aa0a6; }
+    .ev.enter { border-left-color: #7fd1ae; }
+    .mode { font-size: 11px; padding: 0 5px; border-radius: 3px; background: #223552; color: var(--accent); }
+    .empty { color: var(--muted); font-size: 12px; }
+    #loginBox { display: flex; gap: 6px; }
+    #loginBox input { flex: 1; min-width: 0; background: #0f1826; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    #loginBox button, #sayBox button, #moveBox button { background: #223552; color: var(--text); border: 1px solid #304b72; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    #sayBox, #moveBox { display: flex; gap: 6px; margin-top: 6px; }
+    #sayBox input { flex: 1; min-width: 0; background: #0f1826; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    #moveBox button { flex: 1; }
+    #identity { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    #loginMsg { color: var(--warn); font-size: 12px; margin-top: 6px; min-height: 16px; }
+    .relation-row { font-size: 12px; margin-top: 4px; }
+    .card h2.sub { margin-top: 10px; }
+    .mood-row { font-size: 12px; margin-top: 4px; }
+    .mood-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .pwd-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+    .pwd-form input { background: #0f1826; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    .pwd-form button { background: #223552; color: var(--text); border: 1px solid #304b72; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    #logoutBtn { margin-top: 6px; background: #223552; color: var(--text); border: 1px solid #304b72; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    #loginOverlay {
+      position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, #17263b 0%, var(--bg) 75%);
+    }
+    #loginOverlay[hidden] { display: none; }
+    .login-card { width: min(380px, 90vw); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px 26px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+    .login-card h1 { margin: 0; font-size: 20px; letter-spacing: 1px; text-align: center; }
+    .login-card p { margin: 0; color: var(--muted); font-size: 13px; text-align: center; }
+    .login-card input { background: #0f1826; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; }
+    .login-card button { background: var(--accent-2); color: #fff; border: 1px solid var(--accent); border-radius: 8px; padding: 10px; font: inherit; font-size: 15px; cursor: pointer; }
+    .login-card button:hover { background: var(--accent); }
+    .login-card #loginMsg { text-align: center; min-height: 18px; }
+    .emote-pick { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .emote-pick button { font-size: 22px; width: 42px; height: 42px; border-radius: 8px; border: 1px solid var(--line); background: #0f1826; cursor: pointer; }
+    .emote-pick button.picked { border-color: var(--accent); background: #223552; }
+    #settingsBtn { position: absolute; left: 12px; top: 12px; z-index: 5; background: rgba(20,32,51,.85); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    #settingsBtn:hover { border-color: var(--accent-2); }
+    #settingsOverlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; background: rgba(5,9,15,.6); }
+    #settingsOverlay[hidden] { display: none; }
+    .settings-card { width: min(420px, 92vw); max-height: 86vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+    .settings-card h1 { margin: 0; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+    .settings-card h1 button { background: #223552; color: var(--text); border: 1px solid #304b72; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+    .setting-row span small { display: block; color: var(--muted); font-size: 11px; }
+    .setting-row input[type="range"] { width: 150px; }
+    .setting-row output { min-width: 56px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .setting-row select, .setting-row input[type="number"] { background: #0f1826; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  </style>
+</head>
+<body>
+<div id="loginOverlay">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <h1>进入 Snowdome</h1>
+    <p>输入昵称与密码。首次使用的昵称即为注册。</p>
+    <input id="nameInput" maxlength="16" placeholder="昵称" autocomplete="username">
+    <input id="passwordInput" type="password" maxlength="64" placeholder="密码" autocomplete="current-password">
+    <div id="emotePick" class="emote-pick" aria-label="常态表情"></div>
+    <button id="loginBtn" type="submit">进入小镇</button>
+    <div id="overlayMsg"></div>
+  </form>
+</div>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <button id="settingsBtn" title="设置">⚙ 设置</button>
+  </div>
+  <aside>
+    <div class="brand">
+      <h1>Snowdome 玻璃球</h1>
+      <p>访客只读观察页 · 你可以看，但不能改造世界</p>
+    </div>
+
+    <section class="card">
+      <h2>访客 <span>登录后可说话和移动</span></h2>
+      <div id="identity">当前：游客（只能观察）</div>
+      <div id="sayBox" hidden><input id="sayInput" maxlength="80" placeholder="说点什么"><button id="sayBtn">说</button></div>
+      <div id="moveBox" hidden><button data-dx="-3">← 西</button><button data-dy="-3">↑ 北</button><button data-dy="3">↓ 南</button><button data-dx="3">东 →</button></div>
+      <div id="loginMsg"></div>
+      <button id="logoutBtn" hidden>离开小镇</button>
+      <details id="pwdBox" class="help" hidden>
+        <summary>修改密码</summary>
+        <div class="pwd-form">
+          <input id="oldPwdInput" type="password" placeholder="旧密码" autocomplete="current-password">
+          <input id="newPwdInput" type="password" placeholder="新密码（4–64 字符）" autocomplete="new-password">
+          <button id="pwdBtn">确认修改</button>
+        </div>
+      </details>
+    </section>
+    <section class="card">
+      <h2>运行状态</h2>
+      <div id="status" data-mode="live">连接中…</div>
+      <button id="skipReplay" title="立即显示所有剩余事件">跳过回放</button>
+    </section>
+
+    <section class="card">
+      <h2>视角 <span>滚轮缩放 · 拖动平移</span></h2>
+      <div class="controls">
+        <div class="group">
+          <button id="zoomIn" title="放大（+）">＋</button>
+          <button id="zoomOut" title="缩小（-）">－</button>
+          <span id="zoomLabel">100%</span>
+        </div>
+        <div class="group">
+          <button id="rotL" title="逆时针旋转（Q）">↺</button>
+          <button id="rotR" title="顺时针旋转（E）">↻</button>
+        </div>
+        <div class="group">
+          <button id="toggleGrid" class="active" title="显示/隐藏地板网格（G）">网格</button>
+          <button id="reset" title="恢复默认视角（R）">重置</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>居民 <span>点击可跟随</span></h2>
+      <div id="actorButtons"></div>
+      <div id="relations"></div>
+      <h2 class="sub">心情 <span>效价 · 唤醒度，随时间回归平静</span></h2>
+      <div id="moods"></div>
+    </section>
+
+    <section class="card">
+      <h2>图例</h2>
+      <div class="legend-row"><span class="dot" style="background:#fff"></span>居民</div>
+      <div class="legend-row"><span class="dot" style="background:#8fa9c2"></span>墙体（场景原有）</div>
+      <div class="legend-row"><span class="dot" style="background:#e8a87c"></span>居民建造的方块（颜色按建造者区分）</div>
+      <div class="legend-row"><span class="dot" style="background:#ffd966"></span>金色居民为正在跟随</div>
+      <details class="help" style="margin-top:8px">
+        <summary>操作说明</summary>
+        波纹表示有人说话，越淡表示传得越远；“…”表示听到的文字残缺。<br>
+        快捷键：<kbd>+</kbd><kbd>-</kbd> 缩放，<kbd>Q</kbd><kbd>E</kbd> 旋转，<kbd>R</kbd> 重置，<kbd>G</kbd> 网格。
+      </details>
+    </section>
+
+    <section class="card" style="flex:1; min-height:0">
+      <h2>事件记录 <span>最新在底部</span></h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</div>
+<div id="settingsOverlay" hidden>
+  <div class="settings-card" role="dialog" aria-label="设置">
+    <h1>设置 <button id="settingsClose">关闭</button></h1>
+    <label class="setting-row"><span>显示网格<small>地板网格线（快捷键 G）</small></span><input id="set-showGrid" type="checkbox"></label>
+    <label class="setting-row"><span>昼夜色调<small>白天、夜晚与季节的画面色调</small></span><input id="set-showDaylight" type="checkbox"></label>
+    <label class="setting-row"><span>圆盘时钟<small>左下角的昼夜时钟（季节标签始终显示）</small></span><input id="set-showClock" type="checkbox"></label>
+    <label class="setting-row"><span>居民名字<small>居民头顶的名字标签</small></span><input id="set-showNames" type="checkbox"></label>
+    <label class="setting-row"><span>心情光晕<small>心情强烈时圆点发光</small></span><input id="set-showMoodGlow" type="checkbox"></label>
+    <label class="setting-row"><span>气泡时长<small>说话气泡停留时间（毫秒）</small></span><span><input id="set-bubbleMs" type="range" min="1000" max="6000" step="250"> <output id="out-bubbleMs"></output></span></label>
+    <label class="setting-row"><span>移动动画时长<small>居民走路的滑动时间（毫秒）</small></span><span><input id="set-moveMs" type="range" min="150" max="1200" step="50"> <output id="out-moveMs"></output></span></label>
+    <label class="setting-row"><span>回放速度<small>历史事件与积压事件的播放倍率</small></span><span><input id="set-replaySpeed" type="range" min="0.5" max="4" step="0.5"> <output id="out-replaySpeed"></output></span></label>
+    <label class="setting-row"><span>事件记录条数<small>侧栏保留的最近事件数量</small></span><input id="set-logLimit" type="number" min="5" max="200" step="5"></label>
+    <div class="setting-row"><span>恢复默认<small>清除所有本地设置</small></span><button id="settingsReset">恢复默认</button></div>
+  </div>
+</div>
+<script src="/view.js"></script>
+</body>
+</html>
